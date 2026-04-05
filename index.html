@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shopping List</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      padding: 40px 16px;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #1a1a2e;
+      margin-bottom: 24px;
+      font-size: 28px;
+    }
+
+    .input-area {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .input-area input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-area input:focus {
+      border-color: #4a90d9;
+    }
+
+    .input-area button {
+      padding: 12px 20px;
+      background: #4a90d9;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    .input-area button:hover { background: #357abd; }
+
+    .stats {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 4px;
+      margin-bottom: 12px;
+      font-size: 14px;
+      color: #888;
+    }
+
+    .list { list-style: none; }
+
+    .list li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: white;
+      padding: 14px 16px;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      transition: opacity 0.2s, transform 0.2s;
+      animation: slideIn 0.25s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .list li.checked { opacity: 0.55; }
+    .list li.checked .item-text { text-decoration: line-through; color: #aaa; }
+
+    .checkbox {
+      width: 22px;
+      height: 22px;
+      border: 2px solid #ccc;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+
+    .checkbox:hover { border-color: #4a90d9; }
+
+    .checkbox.active {
+      background: #4a90d9;
+      border-color: #4a90d9;
+    }
+
+    .checkbox.active::after {
+      content: '';
+      width: 6px;
+      height: 10px;
+      border: solid white;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+      margin-bottom: 2px;
+    }
+
+    .item-text {
+      flex: 1;
+      font-size: 16px;
+      color: #333;
+      word-break: break-word;
+    }
+
+    .delete-btn {
+      background: none;
+      border: none;
+      color: #ccc;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .delete-btn:hover { color: #e74c3c; background: #fdeaea; }
+
+    .empty {
+      text-align: center;
+      color: #bbb;
+      padding: 40px;
+      font-size: 15px;
+    }
+
+    .clear-done {
+      display: block;
+      margin: 16px auto 0;
+      padding: 8px 20px;
+      background: none;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      color: #999;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .clear-done:hover { border-color: #e74c3c; color: #e74c3c; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Shopping List</h1>
+
+    <div class="input-area">
+      <input type="text" id="itemInput" placeholder="항목을 입력하세요..." autofocus>
+      <button onclick="addItem()">추가</button>
+    </div>
+
+    <div class="stats" id="stats"></div>
+    <ul class="list" id="list"></ul>
+    <div id="emptyMsg" class="empty">목록이 비어 있습니다</div>
+    <button class="clear-done" id="clearBtn" onclick="clearDone()" style="display:none">
+      완료 항목 삭제
+    </button>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'shopping-list';
+    let items = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+    const input = document.getElementById('itemInput');
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(); });
+
+    function save() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    }
+
+    function addItem() {
+      const text = input.value.trim();
+      if (!text) return;
+      items.push({ text, done: false });
+      input.value = '';
+      input.focus();
+      save();
+      render();
+    }
+
+    function toggle(i) {
+      items[i].done = !items[i].done;
+      save();
+      render();
+    }
+
+    function remove(i) {
+      items.splice(i, 1);
+      save();
+      render();
+    }
+
+    function clearDone() {
+      items = items.filter(it => !it.done);
+      save();
+      render();
+    }
+
+    function render() {
+      const list = document.getElementById('list');
+      const empty = document.getElementById('emptyMsg');
+      const stats = document.getElementById('stats');
+      const clearBtn = document.getElementById('clearBtn');
+
+      list.innerHTML = '';
+
+      if (items.length === 0) {
+        empty.style.display = 'block';
+        stats.style.display = 'none';
+        clearBtn.style.display = 'none';
+        return;
+      }
+
+      empty.style.display = 'none';
+      stats.style.display = 'flex';
+
+      const doneCount = items.filter(it => it.done).length;
+      stats.textContent = `Total ${items.length}   Done ${doneCount}`;
+      clearBtn.style.display = doneCount > 0 ? 'block' : 'none';
+
+      items.forEach((item, i) => {
+        const li = document.createElement('li');
+        if (item.done) li.classList.add('checked');
+
+        li.innerHTML = `
+          <div class="checkbox ${item.done ? 'active' : ''}" onclick="toggle(${i})"></div>
+          <span class="item-text">${escapeHtml(item.text)}</span>
+          <button class="delete-btn" onclick="remove(${i})" title="삭제">&times;</button>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    function escapeHtml(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    render();
+  </script>
+</body>
+</html>
