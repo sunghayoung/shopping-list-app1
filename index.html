@@ -62,6 +62,7 @@
     }
 
     .input-area button:hover { background: #357abd; }
+    .input-area button:disabled { background: #a0c4e8; cursor: not-allowed; }
 
     .stats {
       display: flex;
@@ -167,6 +168,16 @@
     }
 
     .clear-done:hover { border-color: #e74c3c; color: #e74c3c; }
+
+    .status-bar {
+      text-align: center;
+      font-size: 12px;
+      color: #bbb;
+      margin-bottom: 8px;
+      min-height: 18px;
+    }
+
+    .status-bar.error { color: #e74c3c; }
   </style>
 </head>
 <body>
@@ -175,54 +186,124 @@
 
     <div class="input-area">
       <input type="text" id="itemInput" placeholder="항목을 입력하세요..." autofocus>
-      <button onclick="addItem()">추가</button>
+      <button id="addBtn" onclick="addItem()">추가</button>
     </div>
 
+    <div class="status-bar" id="statusBar">Supabase 연결 중...</div>
     <div class="stats" id="stats"></div>
     <ul class="list" id="list"></ul>
-    <div id="emptyMsg" class="empty">목록이 비어 있습니다</div>
+    <div id="emptyMsg" class="empty" style="display:none">목록이 비어 있습니다</div>
     <button class="clear-done" id="clearBtn" onclick="clearDone()" style="display:none">
       완료 항목 삭제
     </button>
   </div>
 
   <script>
-    const STORAGE_KEY = 'shopping-list';
-    let items = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const SUPABASE_URL = 'https://njoiixswqksyknjibwyr.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qb2lpeHN3cWtzeWtuamlid3lyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDQ4ODMsImV4cCI6MjA5MDYyMDg4M30.CSd9TE7cJsrtvxYGdX3DH2ZNypuGxUjsHF57dIKDxmo';
+    const TABLE = 'shopping_items1';
+    const API = `${SUPABASE_URL}/rest/v1/${TABLE}`;
+    const HEADERS = {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Prefer': 'return=representation'
+    };
+
+    let items = [];
 
     const input = document.getElementById('itemInput');
+    const addBtn = document.getElementById('addBtn');
     input.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(); });
 
-    function save() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    function setStatus(msg, isError = false) {
+      const bar = document.getElementById('statusBar');
+      bar.textContent = msg;
+      bar.className = 'status-bar' + (isError ? ' error' : '');
     }
 
-    function addItem() {
+    async function loadItems() {
+      try {
+        const res = await fetch(`${API}?order=created_at.asc`, { headers: HEADERS });
+        if (!res.ok) throw new Error(await res.text());
+        items = await res.json();
+        setStatus('Supabase 연결됨');
+        render();
+      } catch (e) {
+        setStatus('연결 실패: ' + e.message, true);
+        render();
+      }
+    }
+
+    async function addItem() {
       const text = input.value.trim();
       if (!text) return;
-      items.push({ text, done: false });
-      input.value = '';
-      input.focus();
-      save();
-      render();
+      addBtn.disabled = true;
+      try {
+        const res = await fetch(API, {
+          method: 'POST',
+          headers: HEADERS,
+          body: JSON.stringify({ text, done: false })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const [newItem] = await res.json();
+        items.push(newItem);
+        input.value = '';
+        input.focus();
+        render();
+      } catch (e) {
+        setStatus('추가 실패: ' + e.message, true);
+      } finally {
+        addBtn.disabled = false;
+      }
     }
 
-    function toggle(i) {
-      items[i].done = !items[i].done;
-      save();
-      render();
+    async function toggle(id) {
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      const newDone = !item.done;
+      try {
+        const res = await fetch(`${API}?id=eq.${id}`, {
+          method: 'PATCH',
+          headers: HEADERS,
+          body: JSON.stringify({ done: newDone })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        item.done = newDone;
+        render();
+      } catch (e) {
+        setStatus('수정 실패: ' + e.message, true);
+      }
     }
 
-    function remove(i) {
-      items.splice(i, 1);
-      save();
-      render();
+    async function remove(id) {
+      try {
+        const res = await fetch(`${API}?id=eq.${id}`, {
+          method: 'DELETE',
+          headers: HEADERS
+        });
+        if (!res.ok) throw new Error(await res.text());
+        items = items.filter(i => i.id !== id);
+        render();
+      } catch (e) {
+        setStatus('삭제 실패: ' + e.message, true);
+      }
     }
 
-    function clearDone() {
-      items = items.filter(it => !it.done);
-      save();
-      render();
+    async function clearDone() {
+      const doneIds = items.filter(i => i.done).map(i => i.id);
+      if (!doneIds.length) return;
+      try {
+        const res = await fetch(`${API}?id=in.(${doneIds.join(',')})`, {
+          method: 'DELETE',
+          headers: HEADERS
+        });
+        if (!res.ok) throw new Error(await res.text());
+        items = items.filter(i => !i.done);
+        render();
+      } catch (e) {
+        setStatus('삭제 실패: ' + e.message, true);
+      }
     }
 
     function render() {
@@ -243,18 +324,17 @@
       empty.style.display = 'none';
       stats.style.display = 'flex';
 
-      const doneCount = items.filter(it => it.done).length;
+      const doneCount = items.filter(i => i.done).length;
       stats.textContent = `Total ${items.length}   Done ${doneCount}`;
       clearBtn.style.display = doneCount > 0 ? 'block' : 'none';
 
-      items.forEach((item, i) => {
+      items.forEach(item => {
         const li = document.createElement('li');
         if (item.done) li.classList.add('checked');
-
         li.innerHTML = `
-          <div class="checkbox ${item.done ? 'active' : ''}" onclick="toggle(${i})"></div>
+          <div class="checkbox ${item.done ? 'active' : ''}" onclick="toggle('${item.id}')"></div>
           <span class="item-text">${escapeHtml(item.text)}</span>
-          <button class="delete-btn" onclick="remove(${i})" title="삭제">&times;</button>
+          <button class="delete-btn" onclick="remove('${item.id}')" title="삭제">&times;</button>
         `;
         list.appendChild(li);
       });
@@ -266,7 +346,7 @@
       return d.innerHTML;
     }
 
-    render();
+    loadItems();
   </script>
 </body>
 </html>
